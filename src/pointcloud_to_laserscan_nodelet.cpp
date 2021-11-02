@@ -42,6 +42,8 @@
 #include <pluginlib/class_list_macros.h>
 #include <pointcloud_to_laserscan/pointcloud_to_laserscan_nodelet.h>
 #include <sensor_msgs/LaserScan.h>
+#include <sensor_msgs/PointCloud.h>
+#include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <string>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
@@ -54,6 +56,7 @@ PointCloudToLaserScanNodelet::PointCloudToLaserScanNodelet()
 
 void PointCloudToLaserScanNodelet::onInit()
 {
+  NODELET_INFO("Initializing nodelet.");
   boost::mutex::scoped_lock lock(connect_mutex_);
   private_nh_ = getPrivateNodeHandle();
 
@@ -61,6 +64,10 @@ void PointCloudToLaserScanNodelet::onInit()
   private_nh_.param<double>("transform_tolerance", tolerance_, 0.01);
   private_nh_.param<double>("min_height", min_height_, std::numeric_limits<double>::min());
   private_nh_.param<double>("max_height", max_height_, std::numeric_limits<double>::max());
+  private_nh_.param<double>("min_width", min_width_, std::numeric_limits<double>::min());
+  private_nh_.param<double>("max_width", max_width_, std::numeric_limits<double>::max());
+  private_nh_.param<double>("min_length", min_length_, std::numeric_limits<double>::min());
+  private_nh_.param<double>("max_length", max_length_, std::numeric_limits<double>::max());
 
   private_nh_.param<double>("angle_min", angle_min_, -M_PI);
   private_nh_.param<double>("angle_max", angle_max_, M_PI);
@@ -110,6 +117,8 @@ void PointCloudToLaserScanNodelet::onInit()
 
   pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, boost::bind(&PointCloudToLaserScanNodelet::connectCb, this),
                                                boost::bind(&PointCloudToLaserScanNodelet::disconnectCb, this));
+  pub_pc_ = nh_.advertise<sensor_msgs::PointCloud>("cloud", 5);
+
 }
 
 void PointCloudToLaserScanNodelet::connectCb()
@@ -173,16 +182,19 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
   }
 
   sensor_msgs::PointCloud2ConstPtr cloud_out;
-  sensor_msgs::PointCloud2Ptr cloud;
+  sensor_msgs::PointCloud2Ptr cloud_tmp;
+  sensor_msgs::PointCloud cloud;
+
+  cloud.header.frame_id = cloud_msg->header.frame_id;
+  cloud.header.stamp = cloud_msg->header.stamp;
 
   // Transform cloud if necessary
   if (!(output.header.frame_id == cloud_msg->header.frame_id))
   {
     try
     {
-      cloud.reset(new sensor_msgs::PointCloud2);
-      tf2_->transform(*cloud_msg, *cloud, target_frame_, ros::Duration(tolerance_));
-      cloud_out = cloud;
+      tf2_->transform(*cloud_msg, *cloud_tmp, target_frame_, ros::Duration(tolerance_));
+      cloud_out = cloud_tmp;
     }
     catch (tf2::TransformException& ex)
     {
@@ -211,6 +223,25 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
       NODELET_DEBUG("rejected for height %f not in range (%f, %f)\n", *iter_z, min_height_, max_height_);
       continue;
     }
+
+    if (*iter_y > max_length_ || *iter_y < min_length_)
+    {
+      NODELET_DEBUG("rejected for length %f not in range (%f, %f)\n", *iter_y, min_length_, max_length_);
+      continue;
+    }
+
+    if (*iter_x > max_width_ || *iter_x < min_width_)
+    {
+      NODELET_DEBUG("rejected for width %f not in range (%f, %f)\n", *iter_x, min_width_, max_width_);
+      continue;
+    }
+
+    NODELET_INFO("points[x:%f, y:%f, z:%f]", *iter_x, *iter_y, *iter_z);
+    geometry_msgs::Point32 point;
+    point.x = *iter_x;
+    point.y = *iter_y;
+    point.z = *iter_z;
+    cloud.points.push_back(point);
 
     double range = hypot(*iter_x, *iter_y);
     if (range < range_min_)
@@ -241,6 +272,7 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
     }
   }
   pub_.publish(output);
+  pub_pc_.publish(cloud);
 }
 }  // namespace pointcloud_to_laserscan
 

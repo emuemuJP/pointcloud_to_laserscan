@@ -75,7 +75,7 @@ private:
   void disconnectCb();
 
   ros::NodeHandle nh_, private_nh_;
-  ros::Publisher pub_;
+  ros::Publisher pub_, pub_pc_, pub_left_value_, pub_right_value_;
   boost::mutex connect_mutex_;
 
   boost::shared_ptr<tf2_ros::Buffer> tf2_;
@@ -87,7 +87,7 @@ private:
   unsigned int input_queue_size_;
   std::string target_frame_;
   double tolerance_;
-  double min_height_, max_height_, angle_min_, angle_max_, angle_increment_, scan_time_, range_min_, range_max_;
+  double min_height_, max_height_, min_length_, max_length_, min_width_, max_width_, angle_min_, angle_max_, angle_increment_, scan_time_, range_min_, range_max_;
   bool use_inf_;
   double inf_epsilon_;
 };
