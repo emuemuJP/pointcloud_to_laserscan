@@ -100,6 +100,7 @@ void PointCloudToLaserScanNodelet::onInit()
   {
     input_queue_size_ = boost::thread::hardware_concurrency();
   }
+  sub_.subscribe(nh_, "cloud_in", input_queue_size_);
 
   // if pointcloud target frame specified, we need to filter by transform availability
   if (!target_frame_.empty())
@@ -115,10 +116,13 @@ void PointCloudToLaserScanNodelet::onInit()
     sub_.registerCallback(boost::bind(&PointCloudToLaserScanNodelet::cloudCb, this, _1));
   }
 
-  pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, boost::bind(&PointCloudToLaserScanNodelet::connectCb, this),
-                                               boost::bind(&PointCloudToLaserScanNodelet::disconnectCb, this));
-  pub_pc_ = nh_.advertise<sensor_msgs::PointCloud>("cloud", 5);
+  ros::SubscriberStatusCallback status = boost::bind(&PointCloudToLaserScanNodelet::connectCb, this);
 
+  // pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, boost::bind(&PointCloudToLaserScanNodelet::connectCb, this),
+  //                                              boost::bind(&PointCloudToLaserScanNodelet::disconnectCb, this));
+  pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, status, status);
+  pub_pc_ = nh_.advertise<sensor_msgs::PointCloud>("cloud", 5, status, status);
+  pub_pc_floor = nh_.advertise<sensor_msgs::PointCloud>("cloud_floor", 5, status, status);
 }
 
 void PointCloudToLaserScanNodelet::connectCb()
@@ -127,7 +131,6 @@ void PointCloudToLaserScanNodelet::connectCb()
   if (pub_.getNumSubscribers() > 0 && sub_.getSubscriber().getNumPublishers() == 0)
   {
     NODELET_INFO("Got a subscriber to scan, starting subscriber to pointcloud");
-    sub_.subscribe(nh_, "cloud_in", input_queue_size_);
   }
 }
 
@@ -184,9 +187,12 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
   sensor_msgs::PointCloud2ConstPtr cloud_out;
   sensor_msgs::PointCloud2Ptr cloud_tmp;
   sensor_msgs::PointCloud cloud;
+  sensor_msgs::PointCloud cloud_floor;
 
   cloud.header.frame_id = cloud_msg->header.frame_id;
   cloud.header.stamp = cloud_msg->header.stamp;
+  cloud_floor.header.frame_id = cloud_msg->header.frame_id;
+  cloud_floor.header.stamp = cloud_msg->header.stamp;
 
   // Transform cloud if necessary
   if (!(output.header.frame_id == cloud_msg->header.frame_id))
@@ -218,30 +224,31 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
       continue;
     }
 
-    if (*iter_z > max_height_ || *iter_z < min_height_)
-    {
-      NODELET_DEBUG("rejected for height %f not in range (%f, %f)\n", *iter_z, min_height_, max_height_);
-      continue;
-    }
-
-    if (*iter_y > max_length_ || *iter_y < min_length_)
-    {
-      NODELET_DEBUG("rejected for length %f not in range (%f, %f)\n", *iter_y, min_length_, max_length_);
-      continue;
-    }
-
-    if (*iter_x > max_width_ || *iter_x < min_width_)
-    {
-      NODELET_DEBUG("rejected for width %f not in range (%f, %f)\n", *iter_x, min_width_, max_width_);
-      continue;
-    }
-
-    NODELET_INFO("points[x:%f, y:%f, z:%f]", *iter_x, *iter_y, *iter_z);
     geometry_msgs::Point32 point;
     point.x = *iter_x;
     point.y = *iter_y;
     point.z = *iter_z;
+
+    if (*iter_z > max_height_ || *iter_z < min_height_)
+    {
+      if(*iter_z < min_height_) cloud_floor.points.push_back(point);
+      NODELET_DEBUG("rejected for height %f not in range (%f, %f)\n", *iter_z, min_height_, max_height_);
+      continue;
+    }
+
     cloud.points.push_back(point);
+
+    // if (*iter_y > max_length_ || *iter_y < min_length_)
+    // {
+    //   NODELET_DEBUG("rejected for length %f not in range (%f, %f)\n", *iter_y, min_length_, max_length_);
+    //   continue;
+    // }
+
+    // if (*iter_x > max_width_ || *iter_x < min_width_)
+    // {
+    //   NODELET_DEBUG("rejected for width %f not in range (%f, %f)\n", *iter_x, min_width_, max_width_);
+    //   continue;
+    // }
 
     double range = hypot(*iter_x, *iter_y);
     if (range < range_min_)
@@ -273,6 +280,7 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
   }
   pub_.publish(output);
   pub_pc_.publish(cloud);
+  pub_pc_floor.publish(cloud);
 }
 }  // namespace pointcloud_to_laserscan
 
