@@ -14,8 +14,8 @@
             max_height: 1.0
             min_width: -0.5
             max_width: 0.5
-            min_length: -0.5
-            max_length: 1.0
+            min_lenght: -0.5
+            max_lenght: 1.0
 
             <!-- angle_min: -1.5708 # -M_PI/2
             angle_max: 1.5708 # M_PI/2

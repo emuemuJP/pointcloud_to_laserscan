@@ -48,6 +48,7 @@
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <string>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
+#include <queue>
 
 namespace pointcloud_to_laserscan
 {
@@ -123,6 +124,7 @@ void PointCloudToLaserScanNodelet::onInit()
   //                                              boost::bind(&PointCloudToLaserScanNodelet::disconnectCb, this));
   pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, status, status);
   pub_pc_ = nh_.advertise<sensor_msgs::PointCloud>("cloud", 5, status, status);
+  pub_pc_lateral_ = nh_.advertise<sensor_msgs::PointCloud>("cloud_lateral", 5, status, status);
   pub_pc_floor_ = nh_.advertise<sensor_msgs::PointCloud>("cloud_floor", 5, status, status);
   pub_right_distance_ = nh_.advertise<std_msgs::Float64>("right_distance", 5, status, status);
   pub_left_distance_ = nh_.advertise<std_msgs::Float64>("left_distance", 5, status, status);
@@ -160,6 +162,8 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
 {
   // build laserscan output
   sensor_msgs::LaserScan output;
+  std::priority_queue<float, std::vector<float>, std::greater<float>> left_points;
+  std::priority_queue<float> right_points;
   output.header = cloud_msg->header;
   if (!target_frame_.empty())
   {
@@ -190,12 +194,15 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
   sensor_msgs::PointCloud2ConstPtr cloud_out;
   sensor_msgs::PointCloud2Ptr cloud_tmp;
   sensor_msgs::PointCloud cloud;
+  sensor_msgs::PointCloud cloud_lateral;
   sensor_msgs::PointCloud cloud_floor;
   std_msgs::Float64 right_distance;
   std_msgs::Float64 left_distance;
 
   cloud.header.frame_id = cloud_msg->header.frame_id;
   cloud.header.stamp = cloud_msg->header.stamp;
+  cloud_lateral.header.frame_id = cloud_msg->header.frame_id;
+  cloud_lateral.header.stamp = cloud_msg->header.stamp;
   cloud_floor.header.frame_id = cloud_msg->header.frame_id;
   cloud_floor.header.stamp = cloud_msg->header.stamp;
 
@@ -220,7 +227,7 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
 
   right_distance.data = 1e18;
   left_distance.data = -1e18;
-
+  
   // Iterate through pointcloud
   for (sensor_msgs::PointCloud2ConstIterator<float> iter_x(*cloud_out, "x"), iter_y(*cloud_out, "y"),
        iter_z(*cloud_out, "z");
@@ -246,23 +253,21 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
 
     cloud.points.push_back(point);
 
-    if (*iter_y <= max_length_ && *iter_y >= min_length_)
+    if (*iter_x <= max_length_ && *iter_x >= min_length_)
     {
-      if (*iter_x <= max_width_ && *iter_x >= 0)
+      cloud_lateral.points.push_back(point);
+      if (-point.y >= 0)
       {
-        if(*iter_x < right_distance.data) right_distance.data = *iter_x;
+        right_points.push(-point.y);
+        if(right_points.size() > 10) right_points.pop();
       }
-      if (*iter_x >= min_width_ && *iter_x <= 0)
+      if (-point.y <= 0)
       {
-        if(*iter_x > left_distance.data) left_distance.data = *iter_x;
+        left_points.push(-point.y);
+        if(left_points.size() > 10) left_points.pop();
       }
     }
 
-    // if (*iter_x > max_width_ || *iter_x < min_width_)
-    // {
-    //   NODELET_DEBUG("rejected for width %f not in range (%f, %f)\n", *iter_x, min_width_, max_width_);
-    //   continue;
-    // }
 
     double range = hypot(*iter_x, *iter_y);
     if (range < range_min_)
@@ -294,7 +299,24 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
   }
   pub_.publish(output);
   pub_pc_.publish(cloud);
+  pub_pc_lateral_.publish(cloud_lateral);
   pub_pc_floor_.publish(cloud_floor);
+  float mean_right_distance = 0;
+  int right_size = right_points.size();
+  while(!right_points.empty())
+  {
+    mean_right_distance += right_points.top();
+    right_points.pop();
+  }
+  if(right_size!=0) right_distance.data = mean_right_distance / right_size;
+  float mean_left_distance = 0;
+  int left_size = left_points.size();
+  while(!left_points.empty())
+  {
+    mean_left_distance += left_points.top();
+    left_points.pop();
+  }
+  if(left_size!=0) left_distance.data = mean_left_distance / left_size;
   if(right_distance.data!=1e18) pub_right_distance_.publish(right_distance);
   if(left_distance.data!=-1e18) pub_left_distance_.publish(left_distance);
 }
