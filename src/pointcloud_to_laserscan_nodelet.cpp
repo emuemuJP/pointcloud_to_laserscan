@@ -64,6 +64,9 @@ void PointCloudToLaserScanNodelet::onInit()
 
   private_nh_.param<std::string>("target_frame", target_frame_, "");
   private_nh_.param<double>("transform_tolerance", tolerance_, 0.01);
+  private_nh_.param<int>("points_num", points_num_, 1000);
+  private_nh_.param<double>("front_fov", front_fov_, 90);
+  private_nh_.param<std::string>("front_axis", front_axis_, "x");
   private_nh_.param<double>("min_height", min_height_, std::numeric_limits<double>::min());
   private_nh_.param<double>("max_height", max_height_, std::numeric_limits<double>::max());
   private_nh_.param<double>("min_width", min_width_, std::numeric_limits<double>::min());
@@ -82,6 +85,8 @@ void PointCloudToLaserScanNodelet::onInit()
   int concurrency_level;
   private_nh_.param<int>("concurrency_level", concurrency_level, 1);
   private_nh_.param<bool>("use_inf", use_inf_, true);
+
+  private_nh_.param<std::string>("prefix", prefix_, "");
 
   // Check if explicitly single threaded, otherwise, let nodelet manager dictate thread pool size
   if (concurrency_level == 1)
@@ -122,12 +127,14 @@ void PointCloudToLaserScanNodelet::onInit()
 
   // pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, boost::bind(&PointCloudToLaserScanNodelet::connectCb, this),
   //                                              boost::bind(&PointCloudToLaserScanNodelet::disconnectCb, this));
-  pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan", 10, status, status);
-  pub_pc_ = nh_.advertise<sensor_msgs::PointCloud>("cloud", 5, status, status);
-  pub_pc_lateral_ = nh_.advertise<sensor_msgs::PointCloud>("cloud_lateral", 5, status, status);
-  pub_pc_floor_ = nh_.advertise<sensor_msgs::PointCloud>("cloud_floor", 5, status, status);
-  pub_right_distance_ = nh_.advertise<std_msgs::Float64>("right_distance", 5, status, status);
-  pub_left_distance_ = nh_.advertise<std_msgs::Float64>("left_distance", 5, status, status);
+  pub_ = nh_.advertise<sensor_msgs::LaserScan>(prefix_ + "scan", 10, status, status);
+  pub_pc_ = nh_.advertise<sensor_msgs::PointCloud>(prefix_ + "cloud", 5, status, status);
+  pub_pc_front_ = nh_.advertise<sensor_msgs::PointCloud>(prefix_ + "cloud_front", 5, status, status);
+  pub_pc_lateral_ = nh_.advertise<sensor_msgs::PointCloud>(prefix_ + "cloud_lateral", 5, status, status);
+  pub_pc_floor_ = nh_.advertise<sensor_msgs::PointCloud>(prefix_ + "cloud_floor", 5, status, status);
+  pub_front_distance_ = nh_.advertise<std_msgs::Float64>(prefix_ + "front_distance", 5, status, status);
+  pub_right_distance_ = nh_.advertise<std_msgs::Float64>(prefix_ + "right_distance", 5, status, status);
+  pub_left_distance_ = nh_.advertise<std_msgs::Float64>(prefix_ + "left_distance", 5, status, status);
 }
 
 void PointCloudToLaserScanNodelet::connectCb()
@@ -162,6 +169,7 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
 {
   // build laserscan output
   sensor_msgs::LaserScan output;
+  std::priority_queue<float> front_points;
   std::priority_queue<float, std::vector<float>, std::greater<float>> left_points;
   std::priority_queue<float> right_points;
   output.header = cloud_msg->header;
@@ -194,13 +202,17 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
   sensor_msgs::PointCloud2ConstPtr cloud_out;
   sensor_msgs::PointCloud2Ptr cloud_tmp;
   sensor_msgs::PointCloud cloud;
+  sensor_msgs::PointCloud cloud_front;
   sensor_msgs::PointCloud cloud_lateral;
   sensor_msgs::PointCloud cloud_floor;
+  std_msgs::Float64 front_distance;
   std_msgs::Float64 right_distance;
   std_msgs::Float64 left_distance;
 
   cloud.header.frame_id = cloud_msg->header.frame_id;
   cloud.header.stamp = cloud_msg->header.stamp;
+  cloud_front.header.frame_id = cloud_msg->header.frame_id;
+  cloud_front.header.stamp = cloud_msg->header.stamp;
   cloud_lateral.header.frame_id = cloud_msg->header.frame_id;
   cloud_lateral.header.stamp = cloud_msg->header.stamp;
   cloud_floor.header.frame_id = cloud_msg->header.frame_id;
@@ -224,10 +236,10 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
   {
     cloud_out = cloud_msg;
   }
-
+  front_distance.data = 1e18;
   right_distance.data = 1e18;
   left_distance.data = -1e18;
-  
+
   // Iterate through pointcloud
   for (sensor_msgs::PointCloud2ConstIterator<float> iter_x(*cloud_out, "x"), iter_y(*cloud_out, "y"),
        iter_z(*cloud_out, "z");
@@ -239,59 +251,80 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
       continue;
     }
 
-    geometry_msgs::Point32 point;
-    point.x = *iter_x;
-    point.y = *iter_y;
-    point.z = *iter_z;
 
-    if (*iter_z > max_height_ || *iter_z < min_height_)
+    geometry_msgs::Point32 point;
+    if(front_axis_ == "x")
     {
-      if(*iter_z < min_height_) cloud_floor.points.push_back(point);
-      NODELET_DEBUG("rejected for height %f not in range (%f, %f)\n", *iter_z, min_height_, max_height_);
+      point.x = *iter_x;
+      point.y = *iter_y;
+      point.z = *iter_z;
+    }
+    else if(front_axis_ == "z")
+    {
+      point.x = *iter_z;
+      point.y = *iter_y;
+      point.z = -*iter_x;
+    }
+
+    double angle = atan2(point.y, point.x)*180 / M_PI;
+    if ((point.z <= max_height_ && point.z >= min_height_) && point.y <= max_width_ && point.y >= min_width_ && ( angle <= front_fov_/2 ))
+    {
+      cloud_front.points.push_back(point);
+      if (point.x >= 0)
+      {
+        front_points.push(point.x);
+        if(front_points.size() > points_num_) front_points.pop();
+      }
+    }
+
+    if (point.z > max_height_ || point.z < min_height_)
+    {
+      if(point.z < min_height_) cloud_floor.points.push_back(point);
+      NODELET_DEBUG("rejected for height %f not in range (%f, %f)\n", point.z, min_height_, max_height_);
       continue;
     }
 
     cloud.points.push_back(point);
 
-    if (*iter_x <= max_length_ && *iter_x >= min_length_)
+    if (point.x <= max_length_ && point.x >= min_length_)
     {
       cloud_lateral.points.push_back(point);
       if (-point.y >= 0)
       {
         right_points.push(-point.y);
-        if(right_points.size() > 10) right_points.pop();
+        if(right_points.size() > points_num_) right_points.pop();
       }
       if (-point.y <= 0)
       {
         left_points.push(-point.y);
-        if(left_points.size() > 10) left_points.pop();
+        if(left_points.size() > points_num_) left_points.pop();
       }
     }
 
 
-    double range = hypot(*iter_x, *iter_y);
+    double range = hypot(point.x, point.y);
     if (range < range_min_)
     {
-      NODELET_DEBUG("rejected for range %f below minimum value %f. Point: (%f, %f, %f)", range, range_min_, *iter_x,
-                    *iter_y, *iter_z);
+      NODELET_DEBUG("rejected for range %f below minimum value %f. Point: (%f, %f, %f)", range, range_min_, point.x,
+                    point.y, point.z);
       continue;
     }
     if (range > range_max_)
     {
-      NODELET_DEBUG("rejected for range %f above maximum value %f. Point: (%f, %f, %f)", range, range_max_, *iter_x,
-                    *iter_y, *iter_z);
+      NODELET_DEBUG("rejected for range %f above maximum value %f. Point: (%f, %f, %f)", range, range_max_, point.x,
+                    point.y, point.z);
       continue;
     }
 
-    double angle = atan2(*iter_y, *iter_x);
-    if (angle < output.angle_min || angle > output.angle_max)
+    double angle_ = atan2(point.y, point.x);
+    if (angle_ < output.angle_min || angle_ > output.angle_max)
     {
-      NODELET_DEBUG("rejected for angle %f not in range (%f, %f)\n", angle, output.angle_min, output.angle_max);
+      NODELET_DEBUG("rejected for angle %f not in range (%f, %f)\n", angle_, output.angle_min, output.angle_max);
       continue;
     }
 
     // overwrite range at laserscan ray if new range is smaller
-    int index = (angle - output.angle_min) / output.angle_increment;
+    int index = (angle_ - output.angle_min) / output.angle_increment;
     if (range < output.ranges[index])
     {
       output.ranges[index] = range;
@@ -299,8 +332,19 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
   }
   pub_.publish(output);
   pub_pc_.publish(cloud);
+  pub_pc_front_.publish(cloud_front);
   pub_pc_lateral_.publish(cloud_lateral);
   pub_pc_floor_.publish(cloud_floor);
+
+  float mean_front_distance = 0;
+  int front_size = front_points.size();
+  while(!front_points.empty())
+  {
+    mean_front_distance += front_points.top();
+    front_points.pop();
+  }
+  if(front_size!=0) front_distance.data = mean_front_distance / front_size;
+
   float mean_right_distance = 0;
   int right_size = right_points.size();
   while(!right_points.empty())
@@ -309,6 +353,7 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
     right_points.pop();
   }
   if(right_size!=0) right_distance.data = mean_right_distance / right_size;
+
   float mean_left_distance = 0;
   int left_size = left_points.size();
   while(!left_points.empty())
@@ -317,6 +362,8 @@ void PointCloudToLaserScanNodelet::cloudCb(const sensor_msgs::PointCloud2ConstPt
     left_points.pop();
   }
   if(left_size!=0) left_distance.data = mean_left_distance / left_size;
+
+  if(front_distance.data!=1e18) pub_front_distance_.publish(front_distance);
   if(right_distance.data!=1e18) pub_right_distance_.publish(right_distance);
   if(left_distance.data!=-1e18) pub_left_distance_.publish(left_distance);
 }

@@ -3,22 +3,15 @@
 <launch>
 
     <!-- run pointcloud_to_laserscan node -->
-    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node" name="hokuyo3d_pointcloud_to_laserscan">
+    <node pkg="pointcloud_to_laserscan" type="pointcloud_to_laserscan_node" name="realsense_pointcloud_to_laserscan">
 
-        <remap from="cloud_in" to="hokuyo3d/hokuyo_cloud2"/>
+        <remap from="cloud_in" to="/cam_2/depth/color/points"/>
         <rosparam>
             <!-- target_frame: hokuyo3d # Leave disabled to output scan in pointcloud frame -->
             <!-- transform_tolerance: 0.01 -->
-            prefix: hokuyo/
+            prefix: realsenseD435/
             points_num: 10
-            front_fov: 90
-            min_height: 0.01
-            max_height: 1.0
-            min_width: -0.5
-            max_width: 0.5
-            min_length: -0.5
-            max_length: 0.5
-
+            front_axis: z
             <!-- angle_min: -1.5708 # -M_PI/2
             angle_max: 1.5708 # M_PI/2
             angle_increment: 0.0087 # M_PI/360.0

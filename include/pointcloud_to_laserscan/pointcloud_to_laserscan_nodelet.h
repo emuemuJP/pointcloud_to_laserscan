@@ -75,7 +75,7 @@ private:
   void disconnectCb();
 
   ros::NodeHandle nh_, private_nh_;
-  ros::Publisher pub_, pub_pc_, pub_pc_lateral_, pub_pc_floor_, pub_right_distance_, pub_left_distance_;
+  ros::Publisher pub_, pub_pc_, pub_pc_front_, pub_pc_lateral_, pub_pc_floor_, pub_front_distance_, pub_right_distance_, pub_left_distance_;
   boost::mutex connect_mutex_;
 
   boost::shared_ptr<tf2_ros::Buffer> tf2_;
@@ -85,9 +85,10 @@ private:
 
   // ROS Parameters
   unsigned int input_queue_size_;
-  std::string target_frame_;
+  std::string target_frame_, prefix_, front_axis_;
   double tolerance_;
-  double min_height_, max_height_, min_length_, max_length_, min_width_, max_width_, angle_min_, angle_max_, angle_increment_, scan_time_, range_min_, range_max_;
+  int points_num_;
+  double front_fov_, min_height_, max_height_, min_length_, max_length_, min_width_, max_width_, angle_min_, angle_max_, angle_increment_, scan_time_, range_min_, range_max_;
   bool use_inf_;
   double inf_epsilon_;
 };
