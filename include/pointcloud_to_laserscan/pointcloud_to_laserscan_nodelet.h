@@ -75,7 +75,7 @@ private:
   void disconnectCb();
 
   ros::NodeHandle nh_, private_nh_;
-  ros::Publisher pub_, pub_pc_, pub_pc_front_, pub_pc_lateral_, pub_pc_floor_, pub_front_distance_, pub_right_distance_, pub_left_distance_;
+  ros::Publisher pub_, pub_pc_, pub_pc_front_, pub_pc_frontleft_, pub_pc_frontright_, pub_pc_lateral_, pub_pc_floor_, pub_front_distance_, pub_frontleft_distance_, pub_frontright_distance_, pub_right_distance_, pub_left_distance_;
   boost::mutex connect_mutex_;
 
   boost::shared_ptr<tf2_ros::Buffer> tf2_;
