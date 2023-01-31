@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+
+<launch>
+    <!-- run hokuyo3d distance detect node -->
+    <node pkg="detect_area_distance" type="pointcloud_node" name="hokuyo3d_detect">
+        <remap from="cloud_in" to="hokuyo3d/hokuyo3d/hokuyo_cloud2_frame"/>
+        <rosparam>
+            prefix: hokuyo3d/
+            points_num: 10
+            front_fov: 90
+            min_height: 0.01
+            max_height: 1.0
+            min_width: -0.5
+            max_width: 0.5
+            min_length: -0.5
+            max_length: 0.5
+            concurrency_level: 1
+        </rosparam>
+    </node>
+    <!-- run pointcloud_to_laserscan node -->
+    <node pkg="detect_area_distance" type="laserscan_node" name="urg_detect">
+        <remap from="scan_in" to="/hokuyo2d_horizontal/scan"/>
+        <rosparam>
+            prefix: urg_node/
+            points_num: 10
+            front_fov: 90
+            min_width: -0.5
+            max_width: 0.5
+            min_length: -0.5
+            max_length: 0.5
+        </rosparam>
+    </node>
+</launch>

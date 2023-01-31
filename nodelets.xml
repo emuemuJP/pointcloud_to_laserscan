@@ -1,7 +1,7 @@
-<library path="lib/libpointcloud_to_laserscan">
+<library path="lib/libpointcloud">
 
-  <class name="pointcloud_to_laserscan/pointcloud_to_laserscan_nodelet"
-	 type="pointcloud_to_laserscan::PointCloudToLaserScanNodelet"
+  <class name="detect_area_distance/pointcloud_nodelet"
+	 type="detect_area_distance::PointCloudNodelet"
 	 base_class_type="nodelet::Nodelet">
     <description>
       Nodelet to convert sensor_msgs/PointCloud2 to sensor_msgs/LaserScans.
@@ -10,10 +10,10 @@
 
 </library>
 
-<library path="lib/liblaserscan_to_pointcloud">
+<library path="lib/liblaserscan">
 
-  <class name="pointcloud_to_laserscan/laserscan_to_pointcloud_nodelet"
-   type="pointcloud_to_laserscan::LaserScanToPointCloudNodelet"
+  <class name="detect_area_distance/laserscan_nodelet"
+   type="detect_area_distance::LaserScanNodelet"
    base_class_type="nodelet::Nodelet">
     <description>
       Nodelet to convert sensor_msgs/LaserScan to sensor_msgs/PointCloud2.

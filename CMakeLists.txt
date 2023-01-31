@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 2.8.3)
-project(pointcloud_to_laserscan)
+cmake_minimum_required(VERSION 3.0.2)
+project(detect_area_distance)
 
 find_package(catkin REQUIRED COMPONENTS
   laser_geometry
@@ -14,7 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES laserscan_to_pointcloud pointcloud_to_laserscan
+  LIBRARIES laserscan pointcloud
   CATKIN_DEPENDS laser_geometry message_filters nodelet roscpp sensor_msgs tf2 tf2_ros tf2_sensor_msgs
 )
 
@@ -23,23 +23,23 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-add_library(laserscan_to_pointcloud src/laserscan_to_pointcloud_nodelet.cpp)
-target_link_libraries(laserscan_to_pointcloud ${catkin_LIBRARIES})
+add_library(laserscan src/laserscan_nodelet.cpp)
+target_link_libraries(laserscan ${catkin_LIBRARIES})
 
-add_executable(laserscan_to_pointcloud_node src/laserscan_to_pointcloud_node.cpp)
-target_link_libraries(laserscan_to_pointcloud_node laserscan_to_pointcloud ${catkin_LIBRARIES})
+add_executable(laserscan_node src/laserscan_node.cpp)
+target_link_libraries(laserscan_node laserscan ${catkin_LIBRARIES})
 
-add_library(pointcloud_to_laserscan src/pointcloud_to_laserscan_nodelet.cpp)
-target_link_libraries(pointcloud_to_laserscan ${catkin_LIBRARIES})
+add_library(pointcloud src/pointcloud_nodelet.cpp)
+target_link_libraries(pointcloud ${catkin_LIBRARIES})
 
-add_executable(pointcloud_to_laserscan_node src/pointcloud_to_laserscan_node.cpp)
-target_link_libraries(pointcloud_to_laserscan_node pointcloud_to_laserscan ${catkin_LIBRARIES})
+add_executable(pointcloud_node src/pointcloud_node.cpp)
+target_link_libraries(pointcloud_node pointcloud ${catkin_LIBRARIES})
 
 install(TARGETS
-  laserscan_to_pointcloud
-  laserscan_to_pointcloud_node
-  pointcloud_to_laserscan
-  pointcloud_to_laserscan_node
+  laserscan
+  laserscan_node
+  pointcloud
+  pointcloud_node
 	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION})
